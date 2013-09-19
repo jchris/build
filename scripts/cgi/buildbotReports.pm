@@ -203,7 +203,7 @@ sub sanity_url
     if ($DEBUG)  { print STDERR "test_job_results are: ($did_pass, $test_job_num)\n"; }
     if ($did_pass)  { if ($DEBUG)  { print STDERR "it passed\n";  }                   }
     if ($DEBUG)  { print STDERR "It was $test_job_num that tested $bld_revision\n";   }
-    return($test_job_num, $did_pass, $test_job_num);
+    return($test_job_url, $did_pass, $test_job_num);
     }
 
 1;

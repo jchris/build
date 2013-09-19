@@ -121,10 +121,9 @@ elsif ($bldstatus)
     my $running = buildbotReports::is_running($is_running);
     
     if ($did_pass)      { $made_color = $good_color; }
-    else                { $made_color = $warn_color; 
-                          print STDERR "================================\ndid not pass a sanity test\n"; 
+    else                { $made_color = $warn_color; print STDERR "did not pass a sanity test\n"; }
+    if ($test_job_url)  { $running    = $running.'&nbsp;&nbsp;PASSED:&nbsp;<a href="'.$test_job_url.'">'.$test_job_num.'</a>';
                         }
-    if ($test_job_url)  { $running    = $running.'<br><a href="'.$test_job_url.'">$test_job_num</a>'; }
     
     print_HTML_Page( buildbotQuery::html_OK_link( $builder, $bldnum, $rev_numb, $bld_date, $build_jenkins_index),
                      $running,
