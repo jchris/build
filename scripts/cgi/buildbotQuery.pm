@@ -269,7 +269,8 @@ sub trigger_jenkins_url
  
 ############                        test_job_results ( test_url , bld_revision )
 #
-#                                   returns URL of test job, (True/False) whether test passed, number of test job
+#                                   returns: ( URL of test job, (True/False) whether test passed, number of test job)
+#                                   if none: ( 
 sub test_job_results
     {
     my ($test_url, $bld_revision) = @_;
@@ -347,10 +348,11 @@ sub test_job_results
         return("","","");
         }
     else
-       {
-       if ($response->status_line =~ '404')  { return(0); }
-       die $response->status_line;
-    }  }
+        {
+        if ($response->status_line =~ '404')  { return(0); }
+        if ($response->code        =~ /5*/ )  { return(0); }
+        die $response->status_line;
+    }   }
 
 
 1;
