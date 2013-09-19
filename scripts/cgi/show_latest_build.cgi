@@ -25,6 +25,8 @@ use buildbotReports qw(:DEFAULT);
 use CGI qw(:standard);
 my  $query = new CGI;
 
+my $build_jenkins_index = 'hq';
+
 my $delay = 1 + int rand(3.3);    sleep $delay;
 
 my ($good_color, $warn_color, $err_color, $note_color) = ('#CCFFDD', '#FFFFCC', '#FFAAAA', '#CCFFFF');
@@ -101,8 +103,9 @@ else
 
 #### S T A R T  H E R E 
 
-my ($bldstatus, $bldnum, $rev_numb, $bld_date, $is_running) = buildbotReports::last_done_build($builder, $branch);
-print STDERR "according to last_done_build, is_running = $is_running\n";
+print STDERR "================================\ngetting last done build of ($builder, $branch, $build_jenkins_index))\n";
+my ($bldstatus, $bldnum, $rev_numb, $bld_date, $is_running) = buildbotReports::last_done_build($builder, $branch, $build_jenkins_index);
+print STDERR "================================\naccording to last_done_build, is_running = $is_running\n";
 
 if ($bldnum < 0)
     {
@@ -113,10 +116,20 @@ if ($bldnum < 0)
     }
 elsif ($bldstatus)
     {
-    print_HTML_Page( buildbotQuery::html_OK_link( $builder, $bldnum, $rev_numb, $bld_date),
-                     buildbotReports::is_running($is_running),
+    my ($test_job_url, $did_pass, $test_job_num) = buildbotReports::sanity_url($builder, $bldnum, $build_jenkins_index);
+    my $made_color;
+    my $running = buildbotReports::is_running($is_running);
+    
+    if ($did_pass)      { $made_color = $good_color; }
+    else                { $made_color = $warn_color; 
+                          print STDERR "================================\ndid not pass a sanity test\n"; 
+                        }
+    if ($test_job_url)  { $running    = $running.'<br><a href="'.$test_job_url.'">$test_job_num</a>'; }
+    
+    print_HTML_Page( buildbotQuery::html_OK_link( $builder, $bldnum, $rev_numb, $bld_date, $build_jenkins_index),
+                     $running,
                      $builder,
-                     $good_color );
+                     $made_color );
     
     print STDERR "GOOD: $bldnum\n"; 
     }
@@ -135,7 +148,7 @@ else
         $background = $err_color;
         }
     print_HTML_Page( buildbotReports::is_running($is_running),
-                     buildbotQuery::html_FAIL_link( $builder, $bldnum),
+                     buildbotQuery::html_FAIL_link( $builder, $bldnum, $build_jenkins_index),
                      $builder,
                      $background );
     }
