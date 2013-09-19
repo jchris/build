@@ -42,8 +42,8 @@ sub is_running
     {
     my ($status) = @_;
     
-    if ($status == 1 )  { print STDERR "...it's running...\n";  return( $run_icon);  }
-    else                { print STDERR "....NOT RUNNING...\n";  return( $done_icon); }
+    if ($status == 1 )  { if ($DEBUG) { print STDERR "...it's running...\n"; }  return( $run_icon);  }
+    else                { if ($DEBUG) { print STDERR "....NOT RUNNING...\n"; }  return( $done_icon); }
     }
 
 
@@ -79,15 +79,11 @@ sub last_done_build
         }
     else
         {
-        $bldnum     = (reverse sort { 0+$a <=> 0+$b } keys %$all_builds)[0];
-        print STDERR "... getting results of build: $bldnum\n";
-        $result     = buildbotQuery::get_json($builder, $index, '/'.$bldnum);
-        print STDERR "... getting status of build:  $bldnum\n";
-        $isgood     = buildbotQuery::is_good_build($result);
+        $bldnum     = (reverse sort { 0+$a <=> 0+$b } keys %$all_builds)[0];     if ($DEBUG)  { print STDERR "... getting results of build: $bldnum\n"; }
+        $result     = buildbotQuery::get_json($builder, $index, '/'.$bldnum);    if ($DEBUG)  { print STDERR "... getting status of build:  $bldnum\n"; }
         
-        print STDERR "... getting build revision:   $bldnum\n";
-        $rev_numb   = $branch .'-'. buildbotQuery::get_build_revision($result);
-        print STDERR "... getting date of build:    $bldnum\n";
+        $isgood     = buildbotQuery::is_good_build($result);                     if ($DEBUG)  { print STDERR "... getting build revision:   $bldnum\n"; }
+        $rev_numb   = $branch .'-'. buildbotQuery::get_build_revision($result);  if ($DEBUG)  { print STDERR "... getting date of build:    $bldnum\n"; }
         $bld_date   = buildbotQuery::get_build_date($result);
         }
     
@@ -95,11 +91,11 @@ sub last_done_build
     
     $next_bldnum    = 1+ $bldnum;                                             # print STDERR "....is $next_bldnum running?\n";
     my $next_build  = buildbotQuery::get_json($builder, $index, '/'.$next_bldnum);
-    if ( buildbotQuery::is_running_build( $next_build) ) { $is_running = 1;  print STDERR "$bldnum is still running\n"; }
+    if ( buildbotQuery::is_running_build( $next_build) ) { $is_running = 1;  if ($DEBUG)  { print STDERR "$bldnum is still running\n"; } }
     
 
-    print STDERR "... bld_date is $bld_date...\n";
-    print STDERR "... rev_numb is $rev_numb...\n";
+    if ($DEBUG)  { print STDERR "... bld_date is $bld_date...\n"; }
+    if ($DEBUG)  { print STDERR "... rev_numb is $rev_numb...\n"; }
     
     return( buildbotQuery::is_good_build($result), $bldnum, $rev_numb, $bld_date, $is_running);
     }
@@ -126,22 +122,20 @@ sub last_good_build
     $last_bldnum    = (reverse sort { 0+$a <=> 0+$b } keys %$all_builds)[0];
     $next_bldnum    = 1+ $last_bldnum;                                     # print STDERR "......is $next_bldnum running?\n";
     my $next_build  = buildbotQuery::get_json($builder, $index, '/'.$next_bldnum);
-    if ( buildbotQuery::is_running_build( $next_build) ) { $is_running = 1;  print STDERR "$next_bldnum is still running.\n"; }
+    if ( buildbotQuery::is_running_build( $next_build) ) { $is_running = 1;  if ($DEBUG)  { print STDERR "$next_bldnum is still running.\n"; } }
     
     foreach my $KEY (reverse sort { 0+$a <=> 0+$b } keys %$all_builds)
         {
-        $bldnum = $KEY;
-     #  print STDERR "....$bldnum   $$all_build{$bldnum}\n";
-        $result = buildbotQuery::get_json($builder, $index, '/'.$bldnum);
-     #  print STDERR "....is $bldnum running?\n";
+        $bldnum = $KEY;                                                      if ($DEBUG)  { print STDERR "....$bldnum   $$all_build{$bldnum}\n"; }
+        $result = buildbotQuery::get_json($builder, $index, '/'.$bldnum);    if ($DEBUG)  { print STDERR "....is $bldnum running?\n"; }
         if ( buildbotQuery::is_running_build( $result) )
             {
-            print STDERR "$bldnum is still running\n";
+            if ($DEBUG)  { print STDERR "$bldnum is still running\n"; }
             $is_running = 1;
             }
         elsif ( ! buildbotQuery::is_good_build( $result) )
             {
-            print STDERR "$bldnum did FAIL\n";
+            if ($DEBUG)  { print STDERR "$bldnum did FAIL\n"; }
             }
         else
             { last; }

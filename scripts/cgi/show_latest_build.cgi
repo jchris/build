@@ -103,9 +103,9 @@ else
 
 #### S T A R T  H E R E 
 
-print STDERR "================================\ngetting last done build of ($builder, $branch, $build_jenkins_index))\n";
+# print STDERR "================================\ngetting last done build of ($builder, $branch, $build_jenkins_index))\n";
 my ($bldstatus, $bldnum, $rev_numb, $bld_date, $is_running) = buildbotReports::last_done_build($builder, $branch, $build_jenkins_index);
-print STDERR "================================\naccording to last_done_build, is_running = $is_running\n";
+# print STDERR "================================\naccording to last_done_build, is_running = $is_running\n";
 
 if ($bldnum < 0)
     {
