@@ -62,6 +62,7 @@ sub last_done_build
     if (! ref $all_builds)
         {
         if ($DEBUG)  { print STDERR 'DEBUG: is not a reference, is code $all_builds\n'; }
+        return(0,0,0,0);
         die "not JSON: $all_builds\n";
         }
     my $len = scalar keys %$all_builds;

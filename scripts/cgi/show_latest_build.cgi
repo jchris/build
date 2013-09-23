@@ -112,7 +112,7 @@ my ($bldstatus, $bldnum, $rev_numb, $bld_date, $is_running) = buildbotReports::l
 
 if ($DEBUG)  { print STDERR "================================\naccording to last_done_build, is_running = $is_running\n"; }
 
-if ($bldnum < 0)
+if ($bldnum <= 0)
     {
     print_HTML_Page( 'no build yet',
                      buildbotReports::is_running($is_running),
