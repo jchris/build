@@ -13,10 +13,12 @@ our $VERSION     = 1.00;
 our @ISA         = qw(Exporter);
 our @EXPORT      = ();
 our @EXPORT_OK   = qw( get_URL_root html_builder_link html_OK html_ERROR_msg html_OK_link html_FAIL_link
-                       get_json get_build_revision get_build_date is_running_build is_good_build );
+                       get_json get_build_revision get_build_date is_running_build is_good_build
+                       trigger_jenkins_url  );
 
 our %EXPORT_TAGS = ( HTML  => [qw( &get_URL_root &html_builder_link &html_OK &html_ERROR_msg &html_OK_link &html_FAIL_link )],
-                     JSON  => [qw( &get_json  &get_build_revision  &get_build_date  &is_running_build  &is_good_build      )] );
+                     JSON  => [qw( &get_json  &get_build_revision  &get_build_date  &is_running_build  &is_good_build      )],
+                     TEST  => [qw( &trigger_jenkins_url                                                                    )] );
 
 ############ 
 
@@ -66,7 +68,7 @@ sub get_URL_root
     }
 
 
-############                        html_builder_link ( <builder>, <jenkins_index> )
+############                        html_builder_link ( <builder>, <url_rool_index> )
 #          
 #                                   returns HTML of link to good build results
 sub html_builder_link
@@ -124,8 +126,10 @@ sub html_FAIL_link
 ###########  JSON
 
 
-############                        get_json ( <builder>, <jenkins_index>, <optional_URL_extension> )
+############                        get_json ( <builder>, <url_rool_index>, <optional_URL_extension> )
 #          
+#                                   returns REF to JSON response,
+#                                   or HTML status code if not success
 sub get_json
     {
     my ($bldr, $index, $optpath) = @_;
@@ -136,18 +140,18 @@ sub get_json
     if (defined $optpath)  { $request .= $optpath;  }
     if ($DEBUG)  { print STDERR "\nrequest: $request\n\n"; }
     my $response = $ua->get($request);
-    if ($DEBUG)  { print STDERR "respons: $response\n\n";  }
+    if ($DEBUG)  { print STDERR "response:  $response>status_line\n\n";  }
     
-    if ($response->is_success)
+    if (! $response->is_success)
+        {
+        my $code = $response->code;    if ($DEBUG)  { print STDERR "NOT A SUCCESS...$code\n"; }
+        return($code);
+        }
+    else
         {
         $returnref = $json->decode($response->decoded_content);
         return $returnref;
-        }
-    else
-       {
-       if ($response->status_line =~ '404')  { return(0); }
-       die $response->status_line;
-    }  }
+    }   }
 
 sub get_build_revision
     {
@@ -204,7 +208,7 @@ sub get_build_date
 #                                   returns TRUE if "results" value is null
 sub is_running_build
     {
-    my ($jsonref) = @_;    return ($jsonref) if ($jsonref==0);
+    my ($jsonref) = @_;    return (0) if (! ref $jsonref);
     
     if ( defined($$jsonref{results}) && $DEBUG )  { print STDERR "DEBUG: results is: $$jsonref{results}\n"; }
     if ($DEBUG)  { print STDERR "DEBUG: called is_running_build($jsonref)\n"; }
@@ -229,48 +233,97 @@ sub is_good_build
     return(0 == 1);
     }
 
-############                        trigger_jenkins_url ( <builder>, <bld_num>, <jenkins_index> )
-#          
-#                                   returns URL of test job and build number, or "" if none found
+############                        trigger_jenkins_url ( <builder>, <bld_num>, <url_rool_index> )
+#                                    
+#                                      given a buildbot build, and its URL root,
+#                                      see if it started a jenkins job,
+#                                      and return the URL without parmeters,
+#                                      and the build number parameter.
+#                                      
+#                                      return HTML error code if request fails
+#                                      return negative number if other error
+#                                   
+#                                   returns (URL of test job, build number)
+#                                   or      (  0, CODE )   if HTTP status code not "success"
+#                                   or      (  0, 0)       if no "trigger jenkins" build step
+#                                   or      ( -1, CODE)    if step found, but can't get step stdout
+#                                   or      ( -1, 0)       if URL not found in log
+#                                   or      ( -2, status)  if curl exit status not zero
 sub trigger_jenkins_url
     {
-    my ($builder, $bld_num, $index) = @_;
+    my ($builder, $bld_num, $bindex) = @_;
     my $url_rex = 'curl &#39;(.*)&#39;';
     
-    my $request = $URL_ROOT{$index}.'/builders/'.$builder.'/builds/'.$bld_num.'/steps/trigger%20jenkins/logs/stdio';
-    if ($DEBUG)  { print STDERR "request: $request\n\n";  }
+    my ($request, $response, $content);
     
-    my $response = $ua->get($request);
+    my $url_root = $URL_ROOT{$bindex};
+    $request  = $url_root.'/json/builders/'.$builder.'/builds/'.$bld_num;
+    $response = $ua->get($request);
+    $content  = $response->decoded_content;
+    
     if ($DEBUG)  { print STDERR "respons: $response\n\n";  }
 
-    if ($response->is_success)
+    if ( ! $response->is_success)
         {
-        if ($DEBUG)  { print STDERR "FOUND IT\n"; }
-        my $content = $response->decoded_content;
-        if ( $content =~ $url_rex )
-            {
-            my $curlurl = $1;
-            my ($jenkins_url, $version_num) = ("", "");
-            
-            if ($DEBUG)  { print STDERR "IT MATCHES\n"; }
-            if ($curlurl =~ '(.*)/buildWithParameters'         )  { $jenkins_url = $1; }
-            if ($curlurl =~ 'version_number=([0-9a-zA-Z._-]*)' )  { $version_num = $1; }
-            return($jenkins_url, $version_num);
-            }
-        if ($DEBUG)  { print STDERR "cannot find curl request in:\n\n".$content."\n"; }
-        return(0);
+        if ($DEBUG)  { print STDERR "couldn't get build STEPS from ".$request."       \n:::: ".$response->decoded_content; }
+        return(0, $response->code);
+        }
+    if ($DEBUG)  { print STDERR "got build STEP\n"; }
+    
+    my $jsonref       = $json->decode($response->decoded_content);
+    my $steps_array   = $$jsonref{'steps'};
+    my $len           = $#$steps_array;
+    my $calls_jenkins = 0;
+    
+    for my $step (0 .. $len)
+        {
+        if ($DEBUG)  { print STDERR "step [ $step ] has name: $$steps_array[$step]{'name'}\n"; }
+        if ( $$steps_array[$step]{'name'} eq "trigger jenkins" )  { $calls_jenkins = 1; }
+        }
+    if ( $calls_jenkins == 0)
+        {
+        if ($DEBUG)  { print STDERR "build $bld_num of $builder doesn't trigger a jenkins job\n"; }
+        return(0, 0);
+        }
+    if ($DEBUG)  { print STDERR "TRIGGERS a jenkins job\n"; }
+    
+    $request  = $url_root.'/builders/'.$builder.'/builds/'.$bld_num.'/steps/trigger%20jenkins/logs/stdio';
+    $response = $ua->get($request);
+    $content  = $response->decoded_content;
+        
+    if ( ! $response->is_success)
+        {
+        if ($DEBUG)  { print STDERR "couldn't get build step output from ".$request." \n:::: ".$response->decoded_content; }
+        return(-1, $response->code);
+        }
+    if ($DEBUG)  { print STDERR "getting CONTENT\n"; }
+    
+    my $curlurl;
+    if ( $content =~ $url_rex )
+        {
+        $curlurl = $1;
+        if ($DEBUG)  { print STDERR "FOUND IT\n$curlurl\n"; }
         }
     else
-       {
-       if ($response->status_line =~ '404')  { if ($DEBUG)  { print STDERR "NO RESONSE\n"; }  return(0); }
-       if ($DEBUG)  { print STDERR "DEBUG: no response!  Got status line:\n\n".$response->status_line."\n"; }
-       return($response->status_line);
-    }  }
+        {
+        if ($DEBUG)  { print STDERR "couldn't get jenkins URL from ".$request."       \n:::: ".$response->decoded_content; }
+        return(-1, 0);
+        }
+    
+    my ($jenkins_url, $version_num) = ("", "");
+            
+    if ($curlurl =~ '(.*)/buildWithParameters'         )  { $jenkins_url = $1; }
+    if ($curlurl =~ 'version_number=([0-9a-zA-Z._-]*)' )  { $version_num = $1; }
+    
+    return($jenkins_url, $version_num);
+    }
  
 ############                        test_job_results ( test_url , bld_revision )
 #
-#                                   returns: ( URL of test job, (True/False) whether test passed, number of test job)
-#                                   if none: ( 
+#                                   returns:  ( test passed ?, URL of test job,  number of test job)
+#                                   on error: ( ZERO,          error CODE,       error MESSAGE)
+#                                   
+#                                                error code is HTTP code if positive, internal errors are negative
 sub test_job_results
     {
     my ($test_url, $bld_revision) = @_;
@@ -291,7 +344,7 @@ sub test_job_results
         if ($len < 1)
             {
             if ($DEBUG)  { print STDERR "no test results for $test_url\n"; }
-            return("","","");
+            return(0, -1, "no test results for $test_url");
             }
         else
             {
@@ -299,6 +352,7 @@ sub test_job_results
             my %param_ref;
             for my $item ( 0 .. $len)  { if ($DEBUG) { print STDERR "array[ $item ] is $$results_array[$item]\n"; }
                                                        push @results_numbers, $$results_array[$item]{'number'};
+                                         if ($DEBUG) { print STDERR "results_numbers now: ",@results_numbers; print STDERR "\n"; }
                                                      }
             for my $tnum ( (reverse sort @results_numbers ) )
                 {
@@ -313,45 +367,45 @@ sub test_job_results
                         if ( defined(  $$jsonref{'actions'}[0]{'parameters'} ))
                             {
                             my $param_array = $$jsonref{'actions'}[0]{'parameters'};
-                            for my $item (0 .. $#$param_array)  { $param_ref{$$param_array[$item]{'name'}} = $$param_array[$item]{'value'};
-                                                                  if ($DEBUG) { print STDERR "item $item has name  $$param_array[$item]{'name'}\n";  }
-                                                                  if ($DEBUG) { print STDERR "item $item has value $$param_array[$item]{'value'}\n"; }
-                                                                }
+                            for my $item (0 .. $#$param_array)
+                                {
+                                $param_ref{$$param_array[$item]{'name'}} = $$param_array[$item]{'value'};
+                                if ($DEBUG) { print STDERR "item $item has name  $$param_array[$item]{'name'}\n";  }
+                                if ($DEBUG) { print STDERR "item $item has value $$param_array[$item]{'value'}\n"; }
+                                if ($$param_array[$item]{'name'} eq 'version_number')
+                                    {
+                                    if ($DEBUG) { print STDERR "VN is: $param_ref{'version_number'}\n"; }
+                                    }
+                                }
                             $version = $param_ref{'version_number'};
-                            if ($version == $bld_revision)
+                            if ($version eq $bld_revision)
                                 {
                                 if ($DEBUG) { print STDERR "item has version $version\n"; }
-                                }
                             
-                          # if ($DEBUG) { print STDERR "there are $#params params\n"; }
-                          # for my $item (0 .. $#params)
-                          #     {
-                          #     if ($DEBUG) { print STDERR "param $item is $params[$item]\n"; }
-                          #     if ( $params[$item]{'name'} == 'version_number' )  { $version = $params[$item]{'value'};
-                          #                                                          if ($DEBUG) { print STDERR "item $item has version $version\n"; }
-                          #                                                        }
-                          #     else                                               { if ($DEBUG) { print STDERR "item $item has name $params[$item]{'name'}\n"; }}
-                          #     }
-                            my $did_pass = 0;
-                            if ($$jsonref{"result"} == "SUCCESS")  { $did_pass = 1; }
-                            if ($version == $bld_revision)  { return($did_pass, $test_url.'/'.$tnum, $tnum); }
+                                my $did_pass = 0;
+                                if ($$jsonref{"result"} == "SUCCESS")  { $did_pass = 1; }
+                                if ($version == $bld_revision)  { return($did_pass, $test_url.'/'.$tnum, $tnum); }
+                                }
+                            else { if ($DEBUG) { print STDERR "bing, try again\n"; } }
                             }
                         }
                     }
                 else
                     {
-                    if ($response->status_line =~ '404')  { return(0); }
-                    die $response->status_line;
+                    return(0, $response->code, $response->status_line);
+                #   die $response->status_line;
                     }
                 }
             }
-        return("","","");
+        if ($DEBUG) { print STDERR "no matching test jobs found, inconclusive results\n"; }
+        
+        return(0, $test_url, 0);
         }
     else
         {
-        if ($response->status_line =~ '404')  { return(0); }
-        if ($response->code        =~ /5*/ )  { return(0); }
-        die $response->status_line;
+        return(0, $response->code, $response->status_line);
+    #   if ($response->status_line =~ '404')  { return(0); }
+    #   die $response->status_line;
     }   }
 
 

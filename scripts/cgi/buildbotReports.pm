@@ -59,6 +59,11 @@ sub last_done_build
    
     if ($DEBUG)  { print STDERR 'DEBUG: running buildbotQuery::get_json('.$builder.', '.$index.")\n";    }
     my $all_builds = buildbotQuery::get_json($builder, $index);
+    if (! ref $all_builds)
+        {
+        if ($DEBUG)  { print STDERR 'DEBUG: is not a reference, is code $all_builds\n'; }
+        die "not JSON: $all_builds\n";
+        }
     my $len = scalar keys %$all_builds;
     if ($DEBUG)  { print STDERR "\nDEBUG: all we got back was $all_builds\tlength:  $len\n"; }
     
@@ -89,7 +94,7 @@ sub last_done_build
     
     my $is_running  = 0;
     
-    $next_bldnum    = 1+ $bldnum;                                             # print STDERR "....is $next_bldnum running?\n";
+    $next_bldnum    = 1+ $bldnum;                                                if ($DEBUG)  { print STDERR "....is $next_bldnum running?\n";          }
     my $next_build  = buildbotQuery::get_json($builder, $index, '/'.$next_bldnum);
     if ( buildbotQuery::is_running_build( $next_build) ) { $is_running = 1;  if ($DEBUG)  { print STDERR "$bldnum is still running\n"; } }
     
@@ -120,7 +125,7 @@ sub last_good_build
         }
     my $is_running  = 0;
     $last_bldnum    = (reverse sort { 0+$a <=> 0+$b } keys %$all_builds)[0];
-    $next_bldnum    = 1+ $last_bldnum;                                     # print STDERR "......is $next_bldnum running?\n";
+    $next_bldnum    = 1+ $last_bldnum;                                       if ($DEBUG)  {  print STDERR "......is $next_bldnum running?\n";}
     my $next_build  = buildbotQuery::get_json($builder, $index, '/'.$next_bldnum);
     if ( buildbotQuery::is_running_build( $next_build) ) { $is_running = 1;  if ($DEBUG)  { print STDERR "$next_bldnum is still running.\n"; } }
     
@@ -159,22 +164,41 @@ sub last_good_build
         }
     }
 
-############                        sanity_url ( builder, build_number, jenkins_index )
+############                        sanity_url ( builder, build_number, url_root_index )
 #          
-#                                   returns ( url of test job run, boolean did it apss )
-#                                        or ( 0 )  if no good build
+#                                   returns ( test job url, boolean did test pass, test job number )
+#                                        or ( -1, 0, 0 )  if no test was triggered,
+#                                                          or cannot get info
+#                                        or (  0, 0, 0 )  if no test attempted
 sub sanity_url
     {
     my ($builder, $bld_num, $bindex) = @_;
     my ($tindex, $test_url_root);
     my  $url_rex = '[htps]*://([a-zA-Z0-9.:_-]*)/+job/+([a-zA-Z0-9_-]*)';
     if ($DEBUG)     { print STDERR "============================\nentering sanity_url($builder, $bld_num, $bindex)\n"; }
-    
-    my ($test_url, $bld_revision) = buildbotQuery::trigger_jenkins_url($builder, $bld_num, $bindex);
-    
-    if ($DEBUG)     { print STDERR "we got to here..........\n"; }
-    return(0) if (! defined ($bld_revision) );    
-    if ($DEBUG)     { print STDERR "we got to here..........\n"; }
+     
+    my ($test_url, $bld_revision) = buildbotQuery::trigger_jenkins_url($builder, $bld_num, $bindex );
+    if ($test_url =~ /^[0-9-]*$/)
+        {
+        if ($test_url == -1)
+            {
+            if ($DEBUG)  { print STDERR "FAILED to start test\n"; }
+            return(-1, 0, 0);
+            }
+        if ($DEBUG)  { print STDERR "I guess we found a test\n"; }
+        
+        if ($test_url <= 0)
+            {
+            my  $errcode = $test_url;
+            my  $status  = $bld_revision;
+            if ($status  == 0)
+                {
+            if ($DEBUG) { print STDERR "no jenkins STEP, or no test attempted\n"; }
+                }
+            if ($DEBUG)     { print STDERR "HTTP code: $status\n"; }
+            
+            return($errcode, $status, 0);
+        }   }
     
     if ($DEBUG)     { print STDERR "returned: ($test_url, $bld_revision)\n";             }
     
@@ -187,16 +211,21 @@ sub sanity_url
     else
         {
         if ($DEBUG)  { print STDERR "$test_url is NOT a jenkins URL\n\n"; }
-        return(0);
+        return(0, 0, 0);
         }
     ($test_url, $tindex) = buildbotQuery::get_URL_root($test_url_root);
     if ($DEBUG)     { print STDERR "returned: ($test_url, $tindex)\n";                }
     $test_url = $test_url.'/job/'.$test_job_name;
     
     my ($did_pass, $test_job_url, $test_job_num) = buildbotQuery::test_job_results($test_url, $bld_revision);
-    if ($DEBUG)  { print STDERR "test_job_results are: ($did_pass, $test_job_num)\n"; }
+                      if ($DEBUG)  { print STDERR "test_job_results are: ($did_pass, $test_job_url, $test_job_num)\n"; }
+
+#                                   returns:  ( test passed ?, URL of test job,  number of test job)
+#                                   on error: ( ZERO,          error CODE,       error MESSAGE)
+
+    if ($test_job_url =~ /^[0-9-]*$/)  { return(0,0,0); }
     if ($did_pass)  { if ($DEBUG)  { print STDERR "it passed\n";  }                   }
-    if ($DEBUG)  { print STDERR "It was $test_job_num that tested $bld_revision\n";   }
+                      if ($DEBUG)  { print STDERR "It was $test_job_num that tested $bld_revision\n";   }
     return($test_job_url, $did_pass, $test_job_num);
     }
 
