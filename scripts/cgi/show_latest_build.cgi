@@ -58,7 +58,7 @@ sub print_HTML_Page
          .'</div>'."\n";
     print $query->end_html;
     }
-my $installed_URL='http://10.3.2.199/cgi/show_latest_build.cgi';
+my $installed_URL='http://factory/cgi/show_latest_build.cgi';
 
 my $usage = "ERROR: must specify  EITHER both 'builder' and 'branch' params\n"
            ."                         OR all of 'platform', 'bits', 'branch'\n\n"

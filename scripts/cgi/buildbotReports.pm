@@ -27,7 +27,7 @@ use buildbotMapping qw(:DEFAULT);
 use JSON;
 my $json = JSON->new;
 
-my $installed_URL='http://10.3.2.199';
+my $installed_URL='http://factory';
 my $run_icon  = '<IMG SRC="' .$installed_URL. '/running_20.gif" ALT="running..." HSPACE="50" ALIGN="TOP">';
 my $done_icon = '&nbsp;';
 
